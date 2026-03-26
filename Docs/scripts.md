@@ -10,6 +10,7 @@ There are two user-facing scripts:
 | --- | --- | --- |
 | `scripts/auth_login.py` | Run the delegated Microsoft sign-in flow and cache tokens locally | Produces a cached access/refresh token set for later Graph calls |
 | `scripts/graph_me.py` | Verify the cached auth flow by calling Microsoft Graph `/me` | Confirms the app registration, scopes, and token cache are working |
+| `scripts/mail_send.py` | Send an email as the signed-in Microsoft 365 user | Triggers a real delegated Graph action using the minimal `Mail.Send` scope |
 
 There are also three internal helper modules used by those scripts:
 
@@ -169,6 +170,75 @@ When to use it:
 - confirming the cache contains a usable token
 - checking whether the current user can reach Graph successfully
 
+## `scripts/mail_send.py`
+
+Purpose:
+Send an email as the signed-in Microsoft 365 user through `POST /me/sendMail`.
+
+Typical usage:
+
+```bash
+.venv/bin/python scripts/mail_send.py \
+  --to someone@example.com \
+  --subject "Hello from Graph" \
+  --body "This message was sent by the repo helper script."
+```
+
+Safe validation example:
+
+```bash
+.venv/bin/python scripts/mail_send.py \
+  --to someone@example.com \
+  --subject "Dry run" \
+  --body "This will not be sent." \
+  --dry-run
+```
+
+Common variants:
+
+```bash
+.venv/bin/python scripts/mail_send.py --to someone@example.com --subject "HTML test" --body-file body.html --body-type html
+.venv/bin/python scripts/mail_send.py --to someone@example.com --cc team@example.com --subject "Status" --body "Done"
+.venv/bin/python scripts/mail_send.py --to someone@example.com --subject "No Sent Items copy" --body "Test" --no-save-to-sent-items
+```
+
+What it does:
+
+1. Builds a Graph `sendMail` payload from the CLI arguments.
+2. Requests only the minimal delegated scope required for this action: `Mail.Send`.
+3. Uses the shared auth flow and cached token path.
+4. Calls `POST https://graph.microsoft.com/v1.0/me/sendMail`.
+5. Treats HTTP `202 Accepted` as success.
+
+Required inputs:
+
+- at least one `--to` recipient
+- `--subject`
+- either `--body` or `--body-file`
+
+Useful flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--to VALUE` | One or more recipients; repeat the flag or use comma-separated values |
+| `--cc VALUE` | Optional CC recipients |
+| `--bcc VALUE` | Optional BCC recipients |
+| `--subject VALUE` | Required subject line |
+| `--body VALUE` | Inline message body |
+| `--body-file PATH` | Read the message body from a file |
+| `--body-type text|html` | Choose plain text or HTML body format |
+| `--login-hint VALUE` | Optional UPN/email hint for sign-in |
+| `--force-interactive` | Skip cache lookup and force sign-in |
+| `--dry-run` | Print the constructed request summary without sending mail |
+| `--json` | Print structured JSON output |
+| `--no-save-to-sent-items` | Do not keep a copy in Sent Items |
+
+When to use it:
+
+- verifying a real write/action path works against Graph
+- sending notifications, reminders, or simple automation emails
+- validating that the repo can perform a delegated side-effect, not just read profile data
+
 ## Internal Helper Modules
 
 These are not the primary user entrypoints, but they define the current script architecture.
@@ -206,7 +276,7 @@ Provide a minimal authenticated Graph GET helper for starter scripts.
 Notable behaviors:
 
 - uses `urllib` instead of a heavier API client
-- returns parsed JSON
+- returns parsed JSON for GET and JSON-capable POST calls
 - raises a repo-specific `GraphApiError` with HTTP response details
 
 ## Files These Scripts Read Or Write
@@ -269,10 +339,23 @@ Fix:
 - rerun `scripts/auth_login.py` to refresh consent
 - compare the requested capability against [graph-permissions.md](./graph-permissions.md)
 
+### You want to validate `scripts/mail_send.py` without sending a real email
+
+Use `--dry-run`.
+
+That path:
+
+- validates the CLI input
+- builds the outgoing Graph payload
+- prints a request summary
+- skips authentication and skips the actual `sendMail` call
+
 ## Recommended Documentation Flow For Users
 
 1. Read [Entra app setup](./entra-app-setup.md).
 2. Read [Graph delegated permission matrix](./graph-permissions.md).
 3. Run `scripts/auth_login.py`.
 4. Run `scripts/graph_me.py`.
-5. Move on to future workload-specific scripts once auth and `/me` validation are working.
+5. Use `scripts/mail_send.py --dry-run`.
+6. Use `scripts/mail_send.py` for the first real delegated action.
+7. Move on to future workload-specific scripts once auth, `/me`, and mail send are working.

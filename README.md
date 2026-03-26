@@ -65,6 +65,12 @@ Smoke test the cached token against Microsoft Graph `/me`:
 .venv/bin/python scripts/graph_me.py
 ```
 
+Dry-run the first real action script without sending mail:
+
+```bash
+.venv/bin/python scripts/mail_send.py --to someone@example.com --subject "Dry run" --body "Hello" --dry-run
+```
+
 ## Starter Config
 
 The repo now includes:
