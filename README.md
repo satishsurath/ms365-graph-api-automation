@@ -27,6 +27,7 @@ That audience is broader for sign-in, but it is not the same thing as broader fe
 - [Docs overview](Docs/README.md)
 - [Entra app setup](Docs/entra-app-setup.md)
 - [Graph delegated permission matrix](Docs/graph-permissions.md)
+- [Script reference](Docs/scripts.md)
 
 ## Quick Start
 
@@ -36,6 +37,8 @@ That audience is broader for sign-in, but it is not the same thing as broader fe
 4. Build scripts against the permission bundles documented in [Docs/graph-permissions.md](Docs/graph-permissions.md).
 
 ## Python Helper Scripts
+
+For full script-level documentation, examples, and troubleshooting, see [Docs/scripts.md](Docs/scripts.md).
 
 Install the starter dependencies:
 
