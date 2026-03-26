@@ -10,6 +10,7 @@ from pathlib import Path
 from lib.auth import AuthError, acquire_access_token
 from lib.config import ConfigError, load_settings
 from lib.graph import GraphApiError, graph_post_json
+from lib.session_logging import clear_active_session, start_session
 
 
 REQUIRED_SCOPES = ("Mail.Send",)
@@ -166,11 +167,12 @@ def _json_summary(payload: dict[str, object], dry_run: bool) -> dict[str, object
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    session = None
 
     try:
         payload = _build_message_payload(args)
+        summary = _json_summary(payload, dry_run=args.dry_run)
         if args.dry_run:
-            summary = _json_summary(payload, dry_run=True)
             if args.json:
                 print(json.dumps(summary, indent=2, sort_keys=True))
             else:
@@ -186,6 +188,23 @@ def main() -> int:
             return 0
 
         settings = load_settings(args.env_file)
+        session = start_session(
+            script_name=Path(__file__).name,
+            log_dir=settings.session_log_dir,
+            debug_enabled=settings.session_log_debug,
+            metadata={
+                "command": "mail_send",
+                "required_scopes": REQUIRED_SCOPES,
+                "to_count": len(summary["to"]),
+                "cc_count": len(summary["cc"]),
+                "bcc_count": len(summary["bcc"]),
+                "body_type": args.body_type,
+                "save_to_sent_items": args.save_to_sent_items,
+                "login_hint_provided": bool(args.login_hint),
+                "force_interactive": args.force_interactive,
+                **({"subject": args.subject} if settings.session_log_debug else {}),
+            },
+        )
         token = acquire_access_token(
             settings=settings,
             scopes=REQUIRED_SCOPES,
@@ -200,12 +219,22 @@ def main() -> int:
             expected_statuses=(202,),
         )
     except (ConfigError, AuthError, GraphApiError, OSError, ValueError) as exc:
+        if session:
+            error_event = {"error_type": type(exc).__name__}
+            if session.debug_enabled:
+                error_event["error"] = str(exc)
+            session.log_event("script_error", **error_event)
+            session.finish(status="error")
+            clear_active_session(session)
         parser.exit(status=1, message=f"{exc}\n")
 
-    summary = _json_summary(payload, dry_run=False)
     summary["token_source"] = token.source
+    summary["session_log_path"] = str(session.log_path) if session else None
 
     if args.json:
+        if session:
+            session.finish(status="success", token_source=token.source)
+            clear_active_session(session)
         print(json.dumps(summary, indent=2, sort_keys=True))
         return 0
 
@@ -218,6 +247,10 @@ def main() -> int:
         print(f"BCC: {', '.join(summary['bcc'])}")
     print(f"Save to Sent Items: {summary['save_to_sent_items']}")
     print(f"Token source: {summary['token_source']}")
+    print(f"Session log: {summary['session_log_path'] or 'unknown'}")
+    if session:
+        session.finish(status="success", token_source=token.source)
+        clear_active_session(session)
     return 0
 
 

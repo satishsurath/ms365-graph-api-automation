@@ -137,6 +137,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+.session_logs/
 .tokens/
 .venv
 env/

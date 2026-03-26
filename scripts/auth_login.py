@@ -10,6 +10,7 @@ from pathlib import Path
 
 from lib.auth import AuthError, acquire_access_token
 from lib.config import ConfigError, load_settings
+from lib.session_logging import clear_active_session, start_session
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,6 +71,7 @@ def to_iso8601(epoch_seconds: int | None) -> str | None:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    session = None
 
     try:
         settings = load_settings(args.env_file)
@@ -77,6 +79,20 @@ def main() -> int:
             include_shared=args.include_shared,
             include_collab=args.include_collab,
             extra_scopes=args.scope,
+        )
+        session = start_session(
+            script_name=Path(__file__).name,
+            log_dir=settings.session_log_dir,
+            debug_enabled=settings.session_log_debug,
+            metadata={
+                "command": "auth_login",
+                "scope_count": len(scopes),
+                "requested_scopes": scopes,
+                "include_shared": args.include_shared,
+                "include_collab": args.include_collab,
+                "login_hint_provided": bool(args.login_hint),
+                "force_interactive": args.force_interactive,
+            },
         )
         token = acquire_access_token(
             settings=settings,
@@ -86,9 +102,19 @@ def main() -> int:
             launch_message=not (args.json or args.print_access_token),
         )
     except (ConfigError, AuthError) as exc:
+        if session:
+            error_event = {"error_type": type(exc).__name__}
+            if session.debug_enabled:
+                error_event["error"] = str(exc)
+            session.log_event("script_error", **error_event)
+            session.finish(status="error")
+            clear_active_session(session)
         parser.exit(status=1, message=f"{exc}\n")
 
     if args.print_access_token:
+        if session:
+            session.finish(status="success", token_source=token.source)
+            clear_active_session(session)
         print(token.access_token)
         return 0
 
@@ -97,6 +123,7 @@ def main() -> int:
         "tenant_id": token.tenant_id,
         "authority": settings.authority,
         "cache_path": str(settings.token_cache_path),
+        "session_log_path": str(session.log_path) if session else None,
         "token_source": token.source,
         "expires_at": to_iso8601(token.expires_on),
         "requested_scopes": list(scopes),
@@ -104,6 +131,9 @@ def main() -> int:
     }
 
     if args.json:
+        if session:
+            session.finish(status="success", token_source=token.source)
+            clear_active_session(session)
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
 
@@ -114,9 +144,13 @@ def main() -> int:
     print(f"Token source: {token.source}")
     print(f"Expires at (UTC): {payload['expires_at'] or 'unknown'}")
     print(f"Cache path: {settings.token_cache_path}")
+    print(f"Session log: {payload['session_log_path'] or 'unknown'}")
     print("Granted scopes:")
     for scope in token.granted_scopes:
         print(f"  - {scope}")
+    if session:
+        session.finish(status="success", token_source=token.source)
+        clear_active_session(session)
     return 0
 
 

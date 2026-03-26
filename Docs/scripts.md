@@ -4,7 +4,7 @@ This file documents the Python scripts currently available in this repo.
 
 ## Current Script Surface
 
-There are two user-facing scripts:
+There are three user-facing scripts:
 
 | Script | Purpose | Primary outcome |
 | --- | --- | --- |
@@ -12,13 +12,14 @@ There are two user-facing scripts:
 | `scripts/graph_me.py` | Verify the cached auth flow by calling Microsoft Graph `/me` | Confirms the app registration, scopes, and token cache are working |
 | `scripts/mail_send.py` | Send an email as the signed-in Microsoft 365 user | Triggers a real delegated Graph action using the minimal `Mail.Send` scope |
 
-There are also three internal helper modules used by those scripts:
+There are also four internal helper modules used by those scripts:
 
 | Module | Purpose |
 | --- | --- |
 | `scripts/lib/config.py` | Loads and validates `.env` settings |
 | `scripts/lib/auth.py` | Handles MSAL token acquisition and token-cache persistence |
-| `scripts/lib/graph.py` | Performs minimal Microsoft Graph HTTP GET calls |
+| `scripts/lib/graph.py` | Performs shared Microsoft Graph HTTP operations |
+| `scripts/lib/session_logging.py` | Writes per-session JSONL logs for script, auth, and Graph activity |
 
 ## Shared Prerequisites
 
@@ -57,6 +58,31 @@ The scripts load these environment variables from `.env`:
 | `MSFT_GRAPH_SCOPES_SHARED` | Optional | Shared-resource delegated scope bundle |
 | `MSFT_GRAPH_SCOPES_COLLAB` | Optional | Collaboration and org-focused delegated scope bundle |
 | `MSFT_TOKEN_CACHE_PATH` | Yes | Local MSAL token cache path, typically under `.tokens/` |
+| `MSFT_SESSION_LOG_DIR` | Optional | Directory for per-session JSONL logs; defaults to `.session_logs/` |
+| `MSFT_SESSION_LOG_DEBUG` | Optional | When `true`, include verbose request/response and identity details in session logs; defaults to `false` |
+
+## Session Logging
+
+Every real Microsoft Graph read or write operation now produces session logs under `MSFT_SESSION_LOG_DIR`.
+
+Current logging behavior:
+
+- one JSONL log file per script session
+- `session_started` and `session_finished` events
+- auth events such as cache lookup, interactive sign-in start, and token acquisition
+- Graph request, response, and error events for shared HTTP operations
+- safe-by-default logging: method, redacted path, status, elapsed time, scope data, payload shape summaries, and summarized errors
+- no access tokens or refresh tokens are written to the session logs
+- verbose request/response, detailed error bodies, and identity details are available only when `MSFT_SESSION_LOG_DEBUG=true`
+
+Default log location:
+
+- `.session_logs/`
+
+Git behavior:
+
+- the session log directory is gitignored
+- logs stay local to the machine running the scripts
 
 ## `scripts/auth_login.py`
 
@@ -87,6 +113,7 @@ What it does:
 3. Tries to acquire a token silently from the local cache.
 4. If no valid token is found, launches the browser for Microsoft sign-in and consent.
 5. Saves the updated MSAL cache to `MSFT_TOKEN_CACHE_PATH`.
+6. Writes a per-session JSONL log file under `MSFT_SESSION_LOG_DIR`.
 
 Default output:
 
@@ -96,6 +123,7 @@ Default output:
 - whether the token came from cache or interactive sign-in
 - expiry time
 - granted scopes
+- session log file path
 
 Useful flags:
 
@@ -143,6 +171,7 @@ What it does:
 3. Reuses the same token-acquisition path as `auth_login.py`.
 4. Calls `GET https://graph.microsoft.com/v1.0/me?$select=id,displayName,userPrincipalName,mail`.
 5. Prints a compact profile summary or raw JSON.
+6. Writes request and response details to the current session log.
 
 Default output:
 
@@ -150,6 +179,7 @@ Default output:
 - user principal name
 - mail
 - object ID
+- session log file path
 
 Useful flags:
 
@@ -209,6 +239,7 @@ What it does:
 3. Uses the shared auth flow and cached token path.
 4. Calls `POST https://graph.microsoft.com/v1.0/me/sendMail`.
 5. Treats HTTP `202 Accepted` as success.
+6. Writes the outgoing Graph action and response metadata to the current session log.
 
 Required inputs:
 
@@ -266,6 +297,7 @@ Notable behaviors:
 - attempts silent cache reuse before browser sign-in
 - persists a serializable MSAL cache on disk
 - returns a normalized token result with granted scopes and token source
+- avoids logging tokens in both normal and debug modes
 - surfaces a targeted `AADSTS7000218` fix message for common public-client misconfiguration
 
 ### `scripts/lib/graph.py`
@@ -278,6 +310,21 @@ Notable behaviors:
 - uses `urllib` instead of a heavier API client
 - returns parsed JSON for GET and JSON-capable POST calls
 - raises a repo-specific `GraphApiError` with HTTP response details
+- emits request, response, and error events into the active session log
+- logs redacted metadata by default and only logs full payloads in debug mode
+
+### `scripts/lib/session_logging.py`
+
+Purpose:
+Create one structured JSONL session log per script run and keep auth and Graph activity correlated within that session.
+
+Notable behaviors:
+
+- creates one log file per script session
+- stores timestamped JSONL events
+- records session metadata, auth events, Graph reads, Graph writes, and failures
+- supports a safe default mode and an opt-in verbose debug mode
+- keeps logs local in a gitignored directory
 
 ## Files These Scripts Read Or Write
 
@@ -288,10 +335,15 @@ Read:
 Write:
 
 - token cache file at `MSFT_TOKEN_CACHE_PATH`
+- session log files under `MSFT_SESSION_LOG_DIR`
 
 Typically that cache lives under:
 
 - `.tokens/msal_cache.json`
+
+Typical session log location:
+
+- `.session_logs/20260326T000000Z-graph_me.py-<session-id>.jsonl`
 
 ## Troubleshooting
 
@@ -338,6 +390,18 @@ Fix:
 - grant admin consent if required
 - rerun `scripts/auth_login.py` to refresh consent
 - compare the requested capability against [graph-permissions.md](./graph-permissions.md)
+
+### You want to inspect what happened during a Graph script run
+
+Open the latest JSONL file in `MSFT_SESSION_LOG_DIR`.
+
+Those logs contain:
+
+- session metadata
+- auth flow events
+- each Graph request
+- each Graph response or error
+- completion status for the script session
 
 ### You want to validate `scripts/mail_send.py` without sending a real email
 

@@ -2,7 +2,7 @@
 
 Starter repo for helper scripts that trigger Microsoft 365 user actions through the Microsoft Graph API.
 
-The repo is being structured around delegated authentication for an interactive user, using the authorization code flow with a localhost redirect URI and refresh-token support.
+The repo is being structured around delegated authentication for an interactive user, using the authorization code flow with a localhost redirect URI and refresh-token support. Graph-backed script runs also write session logs by default, but those logs are redacted unless `MSFT_SESSION_LOG_DEBUG=true` is explicitly enabled. In normal mode they capture operation metadata, payload shapes, and summarized errors rather than raw request or response content. Access tokens and refresh tokens are never written to the session logs.
 
 ## Recommended App Model
 
@@ -77,5 +77,6 @@ The repo now includes:
 
 - `Docs/` for setup and permission guidance
 - `.env.example` for app coordinates and scope bundles
+- `.session_logs/` ignored in git for per-session JSONL logs
 - `.tokens/` ignored in git for local token cache files
 - `scripts/` for the initial Python auth and verification helpers
