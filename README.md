@@ -35,6 +35,33 @@ That audience is broader for sign-in, but it is not the same thing as broader fe
 3. Fill in your Entra app values and scope bundles.
 4. Build scripts against the permission bundles documented in [Docs/graph-permissions.md](Docs/graph-permissions.md).
 
+## Python Helper Scripts
+
+Install the starter dependencies:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+Run an interactive login using the core scope bundle from `.env`:
+
+```bash
+.venv/bin/python scripts/auth_login.py
+```
+
+If you want to consent the broader shared-resource and collaboration bundles too:
+
+```bash
+.venv/bin/python scripts/auth_login.py --include-shared --include-collab
+```
+
+Smoke test the cached token against Microsoft Graph `/me`:
+
+```bash
+.venv/bin/python scripts/graph_me.py
+```
+
 ## Starter Config
 
 The repo now includes:
@@ -42,3 +69,4 @@ The repo now includes:
 - `Docs/` for setup and permission guidance
 - `.env.example` for app coordinates and scope bundles
 - `.tokens/` ignored in git for local token cache files
+- `scripts/` for the initial Python auth and verification helpers

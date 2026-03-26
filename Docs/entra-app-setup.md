@@ -179,6 +179,26 @@ To fail cleanly, future scripts in this repo should:
 - Admin consent granted where required
 - `.env` populated with client, tenant, authority, redirect URI, and scope bundles
 
+## Troubleshooting
+
+### `AADSTS7000218` during interactive sign-in
+
+If the browser sign-in succeeds but token acquisition fails with:
+
+- `AADSTS7000218`
+- `invalid_client`
+- `client_assertion` or `client_secret` required
+
+then Microsoft Entra is treating the app as a confidential client during code redemption.
+
+Check these items in the app registration:
+
+- `Authentication` -> `Mobile and desktop applications` contains `http://localhost`
+- `Authentication` -> `Advanced settings` -> `Allow public client flows` is `Yes`
+- The localhost redirect URI is not only registered under `Web`
+
+This repo's Python scripts use MSAL Python `PublicClientApplication` and assume a public-client localhost flow.
+
 ## Source Links
 
 - [Supported account types](https://learn.microsoft.com/en-us/entra/identity-platform/v2-supported-account-types)
