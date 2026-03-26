@@ -4,15 +4,16 @@ This file documents the Python scripts currently available in this repo.
 
 ## Current Script Surface
 
-There are three user-facing scripts:
+There are four user-facing scripts:
 
 | Script | Purpose | Primary outcome |
 | --- | --- | --- |
 | `scripts/auth_login.py` | Run the delegated Microsoft sign-in flow and cache tokens locally | Produces a cached access/refresh token set for later Graph calls |
 | `scripts/graph_me.py` | Verify the cached auth flow by calling Microsoft Graph `/me` | Confirms the app registration, scopes, and token cache are working |
 | `scripts/mail_send.py` | Send an email as the signed-in Microsoft 365 user | Triggers a real delegated Graph action using the minimal `Mail.Send` scope |
+| `scripts/store_init.py` | Initialize the local encrypted Graph artifact store | Creates the SQLite index, artifact directory, and OS-keyring-backed master key |
 
-There are also four internal helper modules used by those scripts:
+There are also five internal helper modules used by those scripts:
 
 | Module | Purpose |
 | --- | --- |
@@ -20,6 +21,7 @@ There are also four internal helper modules used by those scripts:
 | `scripts/lib/auth.py` | Handles MSAL token acquisition and token-cache persistence |
 | `scripts/lib/graph.py` | Performs shared Microsoft Graph HTTP operations |
 | `scripts/lib/session_logging.py` | Writes per-session JSONL logs for script, auth, and Graph activity |
+| `scripts/lib/storage/` | Provides the local encrypted artifact store used by future Graph-caching scripts |
 
 ## Shared Prerequisites
 
@@ -60,6 +62,8 @@ The scripts load these environment variables from `.env`:
 | `MSFT_TOKEN_CACHE_PATH` | Yes | Local MSAL token cache path, typically under `.tokens/` |
 | `MSFT_SESSION_LOG_DIR` | Optional | Directory for per-session JSONL logs; defaults to `.session_logs/` |
 | `MSFT_SESSION_LOG_DEBUG` | Optional | When `true`, include verbose request/response and identity details in session logs; defaults to `false` |
+| `MSFT_GRAPH_STORE_DIR` | Optional | Root directory for the encrypted local Graph artifact store; defaults to `.graph_store/` |
+| `MSFT_GRAPH_STORE_KEYRING_SERVICE` | Optional | OS keyring service name used for the graph store master key |
 
 ## Session Logging
 
@@ -83,6 +87,22 @@ Git behavior:
 
 - the session log directory is gitignored
 - logs stay local to the machine running the scripts
+
+## Encrypted Artifact Store
+
+This repo now includes a starter encrypted local store for Graph artifacts.
+
+Current behavior:
+
+- SQLite index for operational metadata
+- encrypted artifact files in `MSFT_GRAPH_STORE_DIR`
+- OS keyring storage for the long-lived master key
+- per-artifact authenticated encryption through the shared storage helper
+
+Supporting docs:
+
+- [Encrypted artifact store](./storage.md)
+- [ADR 0001: Local Encrypted Store for Microsoft Graph Artifacts](./ADRs/0001-encrypted-graph-artifact-store.md)
 
 ## `scripts/auth_login.py`
 
@@ -270,6 +290,55 @@ When to use it:
 - sending notifications, reminders, or simple automation emails
 - validating that the repo can perform a delegated side-effect, not just read profile data
 
+## `scripts/store_init.py`
+
+Purpose:
+Initialize the local encrypted Graph artifact store and confirm the OS-keyring-backed master key is available.
+
+Typical usage:
+
+```bash
+.venv/bin/python scripts/store_init.py
+```
+
+JSON output:
+
+```bash
+.venv/bin/python scripts/store_init.py --json
+```
+
+What it does:
+
+1. Loads and validates `.env`.
+2. Resolves the graph store directory and keyring service name.
+3. Creates the SQLite index and artifact directory if they do not exist.
+4. Creates or reuses the store master key in the OS keyring.
+5. Prints the effective store paths, schema version, artifact count, and keyring slot information.
+
+Default output:
+
+- store directory
+- SQLite index path
+- artifact directory path
+- schema version
+- artifact count
+- keyring service
+- keyring account slot
+- master key status
+
+Useful flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--env-file PATH` | Load a non-default `.env` file |
+| `--json` | Print a structured JSON summary |
+
+When to use it:
+
+- bootstrapping the encrypted local artifact store
+- validating that the OS keyring backend is available
+- confirming where future Graph artifact payloads will be stored
+
 ## Internal Helper Modules
 
 These are not the primary user entrypoints, but they define the current script architecture.
@@ -326,6 +395,19 @@ Notable behaviors:
 - supports a safe default mode and an opt-in verbose debug mode
 - keeps logs local in a gitignored directory
 
+### `scripts/lib/storage/`
+
+Purpose:
+Provide a shared encrypted local store for future Graph artifact caching and retrieval.
+
+Notable behaviors:
+
+- uses SQLite for indexable metadata
+- stores ciphertext payloads as separate files under the graph store directory
+- keeps the long-lived master key in the OS keyring instead of a repo file
+- encrypts each artifact independently with authenticated encryption
+- exposes helper methods for byte payloads, JSON payloads, reads, and listing
+
 ## Files These Scripts Read Or Write
 
 Read:
@@ -336,6 +418,8 @@ Write:
 
 - token cache file at `MSFT_TOKEN_CACHE_PATH`
 - session log files under `MSFT_SESSION_LOG_DIR`
+- graph store files under `MSFT_GRAPH_STORE_DIR`
+- graph store master key entry in the OS keyring service named by `MSFT_GRAPH_STORE_KEYRING_SERVICE`
 
 Typically that cache lives under:
 
@@ -344,6 +428,11 @@ Typically that cache lives under:
 Typical session log location:
 
 - `.session_logs/20260326T000000Z-graph_me.py-<session-id>.jsonl`
+
+Typical graph store location:
+
+- `.graph_store/index.sqlite3`
+- `.graph_store/artifacts/<prefix>/<artifact-id>.bin`
 
 ## Troubleshooting
 
@@ -413,6 +502,18 @@ That path:
 - builds the outgoing Graph payload
 - prints a request summary
 - skips authentication and skips the actual `sendMail` call
+
+### `scripts/store_init.py` says no OS keyring backend is available
+
+Cause:
+The current machine does not have a supported keyring backend available to Python.
+
+Fix:
+
+- on macOS, confirm the script can access Keychain normally
+- on Windows, confirm the environment can use a Credential Locker-backed keyring
+- on Linux, install or configure a Secret Service compatible backend
+- rerun `scripts/store_init.py` after the backend is available
 
 ## Recommended Documentation Flow For Users
 

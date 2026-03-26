@@ -28,6 +28,8 @@ That audience is broader for sign-in, but it is not the same thing as broader fe
 - [Entra app setup](Docs/entra-app-setup.md)
 - [Graph delegated permission matrix](Docs/graph-permissions.md)
 - [Script reference](Docs/scripts.md)
+- [Encrypted artifact store](Docs/storage.md)
+- [Architecture decision records](Docs/ADRs/README.md)
 
 ## Quick Start
 
@@ -71,11 +73,19 @@ Dry-run the first real action script without sending mail:
 .venv/bin/python scripts/mail_send.py --to someone@example.com --subject "Dry run" --body "Hello" --dry-run
 ```
 
+Initialize the local encrypted artifact store:
+
+```bash
+.venv/bin/python scripts/store_init.py
+```
+
 ## Starter Config
 
 The repo now includes:
 
 - `Docs/` for setup and permission guidance
+- `Docs/ADRs/` for architecture decision records
+- `.graph_store/` ignored in git for encrypted local artifact storage
 - `.env.example` for app coordinates and scope bundles
 - `.session_logs/` ignored in git for per-session JSONL logs
 - `.tokens/` ignored in git for local token cache files

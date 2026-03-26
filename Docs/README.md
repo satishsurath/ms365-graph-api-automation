@@ -18,6 +18,8 @@ For this repo, the default recommendation is the first option: `Accounts in any 
 - [Entra app setup](./entra-app-setup.md)
 - [Graph delegated permission matrix](./graph-permissions.md)
 - [Script reference](./scripts.md)
+- [Encrypted artifact store](./storage.md)
+- [Architecture decision records](./ADRs/README.md)
 
 ## Working Assumption For This Repo
 
